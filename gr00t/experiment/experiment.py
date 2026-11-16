@@ -32,6 +32,7 @@ from gr00t.configs.training.training_config import check_resume_compatibility
 
 # Use custom trainer that profiles data loading & forward times
 from gr00t.experiment.trainer import Gr00tTrainer, ProfCallback
+from gr00t.experiment.local_monitor import LocalTrainingMonitor
 from gr00t.experiment.utils import BestMetricCheckpointCallback, CheckpointFormatCallback
 from gr00t.model import MODEL_REGISTRY
 from gr00t.utils.dist_utils import run_on_rank0, run_or_wait_on_rank0
@@ -280,7 +281,8 @@ def run(config: Config):
         warmup_ratio=config.training.warmup_ratio,
         warmup_steps=config.training.warmup_steps,
         max_grad_norm=config.training.max_grad_norm,
-        logging_steps=config.training.logging_steps,
+        logging_steps=1 if config.training.max_steps <= 5 else config.training.logging_steps,
+        logging_first_step=True,
         save_steps=config.training.save_steps,
         save_total_limit=config.training.save_total_limit,
         save_only_model=config.training.save_only_model,
@@ -311,6 +313,9 @@ def run(config: Config):
         data_collator=data_collator,
         multiprocessing_context=config.data.multiprocessing_context,
     )
+
+    local_monitor = LocalTrainingMonitor()
+    trainer.add_callback(local_monitor)
 
     trainer.add_callback(
         CheckpointFormatCallback(
@@ -383,3 +388,4 @@ def run(config: Config):
     if eval_dataset is not None and hasattr(eval_dataset, "close"):
         eval_dataset.close()
     logging.info("Training completed!")
+    local_monitor.mark_completed(trainer.args, trainer.state)

@@ -109,6 +109,11 @@ class Gr00tN1d7Pipeline(ModelPipeline):
                 )
                 if value is not None
             }
+            # The nested backbone constructor otherwise uses the hub ID saved
+            # in the checkpoint, even when the processor uses a local backbone.
+            backbone_override = {}
+            if Path(self.model_config.model_name).is_dir():
+                backbone_override["model_name"] = self.model_config.model_name
             model, loading_info = AutoModel.from_pretrained(
                 self.config.training.start_from_checkpoint,
                 tune_llm=self.config.model.tune_llm,
@@ -118,6 +123,7 @@ class Gr00tN1d7Pipeline(ModelPipeline):
                 tune_vlln=self.config.model.tune_vlln,
                 state_dropout_prob=self.config.model.state_dropout_prob,
                 **strict_override,
+                **backbone_override,
                 backbone_trainable_params_fp32=self.config.model.backbone_trainable_params_fp32,
                 load_bf16=self.config.model.load_bf16,
                 transformers_loading_kwargs=self.transformers_loading_kwargs,
@@ -183,6 +189,9 @@ class Gr00tN1d7Pipeline(ModelPipeline):
     def _create_dataset(self, save_cfg_dir: Path):
         """Create appropriate dataset based on task and mode."""
         letter_box_transform = self.model_config.letter_box_transform
+        processor_dropout = self.model_config.processor_state_dropout_prob
+        if processor_dropout is None:
+            processor_dropout = self.model_config.state_dropout_prob
         logging.info("N1.7 letter_box_transform=%s", letter_box_transform)
         if self.config.training.start_from_checkpoint is not None:
             processor = AutoProcessor.from_pretrained(
@@ -210,7 +219,7 @@ class Gr00tN1d7Pipeline(ModelPipeline):
                 use_relative_action=self.model_config.use_relative_action,
                 # State augmentation overrides
                 exclude_state=self.model_config.exclude_state,
-                state_dropout_prob=self.model_config.state_dropout_prob,
+                state_dropout_prob=processor_dropout,
                 use_mean_std=self.model_config.use_mean_std,
                 **self.transformers_loading_kwargs,
             )
@@ -240,7 +249,7 @@ class Gr00tN1d7Pipeline(ModelPipeline):
                 use_relative_action=self.model_config.use_relative_action,
                 # State augmentation
                 exclude_state=self.model_config.exclude_state,
-                state_dropout_prob=self.model_config.state_dropout_prob,
+                state_dropout_prob=processor_dropout,
                 use_mean_std=self.model_config.use_mean_std,
                 transformers_loading_kwargs=self.transformers_loading_kwargs,
             )

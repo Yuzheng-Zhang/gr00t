@@ -1,0 +1,34 @@
+{
+  "left_arm": {
+    "raw_action_kind": "absolute_position",
+    "state_unit": "degree",
+    "action_unit": "degree",
+    "representation": "ABSOLUTE",
+    "evidence_status": "user_confirmed_units_and_collection_source_audited",
+    "deployment_verified": false
+  },
+  "left_hand": {
+    "raw_action_kind": "absolute_position",
+    "state_unit": "radian",
+    "action_unit": "radian",
+    "representation": "ABSOLUTE",
+    "evidence_status": "user_confirmed_units_and_collection_source_audited",
+    "deployment_verified": false
+  },
+  "right_arm": {
+    "raw_action_kind": "absolute_position",
+    "state_unit": "degree",
+    "action_unit": "degree",
+    "representation": "ABSOLUTE",
+    "evidence_status": "user_confirmed_units_and_collection_source_audited",
+    "deployment_verified": false
+  },
+  "right_hand": {
+    "raw_action_kind": "absolute_position",
+    "state_unit": "radian",
+    "action_unit": "radian",
+    "representation": "ABSOLUTE",
+    "evidence_status": "user_confirmed_units_and_collection_source_audited",
+    "deployment_verified": false
+  }
+}

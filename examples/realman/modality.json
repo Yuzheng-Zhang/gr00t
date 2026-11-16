@@ -1,0 +1,68 @@
+{
+  "state": {
+    "left_arm": {
+      "start": 0,
+      "end": 7,
+      "original_key": "observation.state"
+    },
+    "left_hand": {
+      "start": 7,
+      "end": 29,
+      "original_key": "observation.state"
+    },
+    "right_arm": {
+      "start": 29,
+      "end": 36,
+      "original_key": "observation.state"
+    },
+    "right_hand": {
+      "start": 36,
+      "end": 58,
+      "original_key": "observation.state"
+    }
+  },
+  "action": {
+    "left_arm": {
+      "start": 0,
+      "end": 7,
+      "original_key": "action"
+    },
+    "left_hand": {
+      "start": 7,
+      "end": 29,
+      "original_key": "action"
+    },
+    "right_arm": {
+      "start": 29,
+      "end": 36,
+      "original_key": "action"
+    },
+    "right_hand": {
+      "start": 36,
+      "end": 58,
+      "original_key": "action"
+    }
+  },
+  "video": {
+    "left_wrist": {
+      "original_key": "observation.images.left_wrist"
+    },
+    "left_top": {
+      "original_key": "observation.images.left_top"
+    },
+    "right_wrist": {
+      "original_key": "observation.images.right_wrist"
+    },
+    "tactile_deform_left": {
+      "original_key": "observation.images.tactile_deform_left"
+    },
+    "tactile_deform_right": {
+      "original_key": "observation.images.tactile_deform_right"
+    }
+  },
+  "annotation": {
+    "human.task_description": {
+      "original_key": "task_index"
+    }
+  }
+}

@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
+from pathlib import Path
 from typing import Any, Tuple
 
 import torch
@@ -591,7 +593,15 @@ class Gr00tN1d7ActionHead(nn.Module):
 
 
 def get_backbone_cls(config: Gr00tN1d7Config):
-    if "nvidia/Cosmos-Reason2" in config.model_name or "Qwen/Qwen3-VL" in config.model_name:
+    local_config = Path(config.model_name) / "config.json"
+    local_qwen = False
+    if local_config.is_file():
+        local_qwen = json.loads(local_config.read_text()).get("model_type") == "qwen3_vl"
+    is_hub_qwen = (
+        "nvidia/Cosmos-Reason2" in config.model_name
+        or "Qwen/Qwen3-VL" in config.model_name
+    )
+    if local_qwen or is_hub_qwen:
         # We import here as Qwen3Backbone depends on newer transformers versions than the rest of the code.
         from gr00t.model.modules.qwen3_backbone import Qwen3Backbone
 

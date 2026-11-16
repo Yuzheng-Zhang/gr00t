@@ -45,6 +45,12 @@ class FinetuneConfig:
     If None, use the pre-registered modality config in `gr00t/configs/data/embodiment_configs.py`. 
     """
 
+    backbone_model_path: str = "nvidia/Cosmos-Reason2-2B"
+    """Local Cosmos directory or compatible backbone model ID."""
+
+    transformers_local_files_only: bool = False
+    """Load model and processor files from local storage only."""
+
     # --- Model Tuning Flags ---
     tune_llm: bool = False
     """If True, fine-tune the language model (LLM) backbone during training."""
@@ -62,6 +68,9 @@ class FinetuneConfig:
     """
     Dropout probability applied to state inputs for regularization during training.
     """
+
+    processor_state_dropout_prob: float | None = None
+    """Processor dropout; None retains the historical state_dropout_prob behavior."""
 
     strict_vl_padding_mask: bool | None = None
     """

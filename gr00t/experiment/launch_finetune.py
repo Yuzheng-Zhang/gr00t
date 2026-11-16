@@ -80,6 +80,7 @@ if __name__ == "__main__":
     config.model.tune_projector = ft_config.tune_projector
     config.model.tune_diffusion_model = ft_config.tune_diffusion_model
     config.model.state_dropout_prob = ft_config.state_dropout_prob
+    config.model.processor_state_dropout_prob = ft_config.processor_state_dropout_prob
     config.model.strict_vl_padding_mask = ft_config.strict_vl_padding_mask
     config.model.strict_action_padding_mask = ft_config.strict_action_padding_mask
     config.model.random_rotation_angle = ft_config.random_rotation_angle
@@ -99,12 +100,13 @@ if __name__ == "__main__":
 
     config.model.load_bf16 = False
     config.model.reproject_vision = False
-    config.model.model_name = "nvidia/Cosmos-Reason2-2B"
+    config.model.model_name = ft_config.backbone_model_path
     config.model.backbone_trainable_params_fp32 = True
     config.model.use_relative_action = True
 
     config.training.experiment_name = ft_config.experiment_name
     config.training.start_from_checkpoint = ft_config.base_model_path
+    config.training.transformers_local_files_only = ft_config.transformers_local_files_only
     config.training.optim = "adamw_torch"
     config.training.global_batch_size = ft_config.global_batch_size
     config.training.dataloader_num_workers = ft_config.dataloader_num_workers

@@ -30,6 +30,7 @@ pipeline is bottlenecked by data loading or by the model's computation.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import queue
 import threading
@@ -151,6 +152,25 @@ def _batch_accuracy(
 
 class Gr00tTrainer(Trainer):
     """Trainer that bypasses torch dataloader and makes data collator async."""
+
+    def create_scheduler(self, num_training_steps, optimizer=None):
+        if os.environ.get("GR00T_CUP_REWARM") != "1":
+            return super().create_scheduler(num_training_steps, optimizer)
+        if num_training_steps != 10000:
+            raise ValueError("Cup rewarm requires max_steps=10000")
+        if self.lr_scheduler is None:
+            def factor(step):
+                start = 0.22652592093878666
+                if step <= 7000:
+                    return start
+                if step <= 7500:
+                    return start + (1.0 - start) * (step - 7000) / 500
+                return 0.5 * (1 + math.cos(math.pi * min(step - 7500, 2500) / 2500))
+            self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+                optimizer if optimizer is not None else self.optimizer, factor
+            )
+            self._created_lr_scheduler = True
+        return self.lr_scheduler
 
     def __init__(
         self,

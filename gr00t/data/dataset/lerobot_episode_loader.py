@@ -45,7 +45,7 @@ import pandas as pd
 
 from gr00t.data.types import ModalityConfig
 from gr00t.utils.initial_actions import INITIAL_ACTIONS_FILENAME, load_initial_actions
-from gr00t.utils.video_utils import get_frames_by_indices
+from gr00t.utils.video_utils import get_frames_by_indices, get_frames_by_timestamps
 
 
 # LeRobot standard metadata filenames
@@ -160,16 +160,35 @@ class LeRobotEpisodeLoader:
         with open(info_path, "r") as f:
             self.info_meta = json.load(f)
 
-        # Load episode metadata (one episode per line)
-        episodes_path = meta_dir / LEROBOT_EPISODES_FILENAME
-        with open(episodes_path, "r") as f:
-            self.episodes_metadata = [json.loads(line) for line in f]
-
-        # Load task descriptions and create mapping
-        tasks_path = meta_dir / LEROBOT_TASKS_FILENAME
-        with open(tasks_path, "r") as f:
-            tasks_data = [json.loads(line) for line in f]
-            self.tasks_map = {task["task_index"]: task["task"] for task in tasks_data}
+        self._is_v3 = self.info_meta.get("codebase_version") == "v3.0"
+        if self._is_v3:
+            episode_files = sorted((meta_dir / "episodes").glob("chunk-*/file-*.parquet"))
+            if not episode_files:
+                raise FileNotFoundError(f"No v3 episode metadata found in {meta_dir}")
+            episodes = pd.concat([pd.read_parquet(p) for p in episode_files], ignore_index=True)
+            if episodes["episode_index"].duplicated().any():
+                raise ValueError("Duplicate episode_index in v3 metadata")
+            self.episodes_metadata = episodes.sort_values("episode_index").to_dict("records")
+            if len(episodes) != self.info_meta["total_episodes"]:
+                raise ValueError("v3 episode count does not match info.json")
+            self._v3_episodes = {int(e["episode_index"]): e for e in self.episodes_metadata}
+            tasks = pd.read_parquet(meta_dir / "tasks.parquet")
+            # LeRobot v3 stores task text as the pandas index.
+            if "task" not in tasks.columns:
+                tasks = tasks.reset_index()
+            if "task" not in tasks.columns or "task_index" not in tasks.columns:
+                raise ValueError("v3 tasks.parquet must contain task text and task_index")
+            if tasks["task_index"].duplicated().any():
+                raise ValueError("Duplicate task_index in v3 metadata")
+            self.tasks_map = {int(r["task_index"]): r["task"] for r in tasks.to_dict("records")}
+        else:
+            episodes_path = meta_dir / LEROBOT_EPISODES_FILENAME
+            with open(episodes_path, "r") as f:
+                self.episodes_metadata = [json.loads(line) for line in f]
+            tasks_path = meta_dir / LEROBOT_TASKS_FILENAME
+            with open(tasks_path, "r") as f:
+                tasks_data = [json.loads(line) for line in f]
+                self.tasks_map = {task["task_index"]: task["task"] for task in tasks_data}
 
         # Load modality structure information
         modality_path = meta_dir / LEROBOT_MODALITY_FILENAME
@@ -199,6 +218,8 @@ class LeRobotEpisodeLoader:
         self.data_path_pattern = self.info_meta["data_path"]
         self.video_path_pattern = self.info_meta.get("video_path")
         self.mask_path_pattern = self.info_meta.get("mask_path")
+        if self._is_v3 and self.mask_path_pattern:
+            raise NotImplementedError("v3 mask loading is not supported yet")
         self.chunk_size = self.info_meta["chunks_size"]
         self.fps = self.info_meta.get("fps", 30)
 
@@ -344,6 +365,30 @@ class LeRobotEpisodeLoader:
 
         return joint_data
 
+    def _load_raw_v3_episode(self, episode_index: int, columns=None) -> pd.DataFrame:
+        """Select an episode from its shared file, checking the global row interval."""
+        record = self._v3_episodes[episode_index]
+        path = self.dataset_path / self.data_path_pattern.format(
+            chunk_index=int(record["data/chunk_index"]),
+            file_index=int(record["data/file_index"]),
+        )
+        frame = pd.read_parquet(
+            path, columns=columns, filters=[("episode_index", "==", episode_index)]
+        ).sort_values("index").reset_index(drop=True)
+        start, stop = int(record["dataset_from_index"]), int(record["dataset_to_index"])
+        if stop <= start or len(frame) != stop - start or len(frame) != int(record["length"]):
+            raise ValueError(f"v3 episode {episode_index}: row count disagrees with metadata")
+        if not np.array_equal(frame["index"].to_numpy(), np.arange(start, stop)):
+            raise ValueError(f"v3 episode {episode_index}: missing or duplicate global rows")
+        if not np.array_equal(frame["frame_index"].to_numpy(), np.arange(len(frame))):
+            raise ValueError(f"v3 episode {episode_index}: frame indices must start at zero")
+        timestamps = frame["timestamp"].to_numpy(dtype=np.float64)
+        if not np.isfinite(timestamps).all() or (np.diff(timestamps) <= 0).any():
+            raise ValueError(f"v3 episode {episode_index}: invalid timestamps")
+        if not np.isclose(timestamps[0], 0, atol=1e-6):
+            raise ValueError(f"v3 episode {episode_index}: timestamps must be episode-relative")
+        return frame
+
     def _load_parquet_data(self, episode_index: int) -> pd.DataFrame:
         """
         Load and process parquet data for a specific episode.
@@ -360,12 +405,15 @@ class LeRobotEpisodeLoader:
             Processed DataFrame with all modality data
         """
         # Load raw parquet data using chunking pattern
-        chunk_idx = episode_index // self.chunk_size
-        parquet_filename = self.data_path_pattern.format(
-            episode_chunk=chunk_idx, episode_index=episode_index
-        )
-        parquet_path = self.dataset_path / parquet_filename
-        original_df = pd.read_parquet(parquet_path)
+        if self._is_v3:
+            original_df = self._load_raw_v3_episode(episode_index)
+        else:
+            chunk_idx = episode_index // self.chunk_size
+            parquet_filename = self.data_path_pattern.format(
+                episode_chunk=chunk_idx, episode_index=episode_index
+            )
+            parquet_path = self.dataset_path / parquet_filename
+            original_df = pd.read_parquet(parquet_path)
         loaded_df = pd.DataFrame()
 
         # Process language annotations (convert task indices to task strings)
@@ -420,6 +468,12 @@ class LeRobotEpisodeLoader:
         chunk_idx = episode_index // self.chunk_size
         image_keys = self.modality_configs["video"].modality_keys
 
+        if self._is_v3:
+            record = self._v3_episodes[episode_index]
+            timestamps = self._load_raw_v3_episode(
+                episode_index, columns=["index", "frame_index", "timestamp", "episode_index"]
+            )["timestamp"].to_numpy(dtype=np.float64)[indices]
+
         for image_key in image_keys:
             # Resolve the original key used in video file naming.
             # Use the video key mapping if the config key differs from the dataset meta key.
@@ -430,6 +484,27 @@ class LeRobotEpisodeLoader:
             assert original_key in self.feature_config, (
                 f"Original key {original_key} not found in feature config"
             )
+
+            if self._is_v3:
+                prefix = f"videos/{original_key}"
+                video_filename = self.video_path_pattern.format(
+                    video_key=original_key,
+                    chunk_index=int(record[f"{prefix}/chunk_index"]),
+                    file_index=int(record[f"{prefix}/file_index"]),
+                )
+                start = float(record[f"{prefix}/from_timestamp"])
+                end = float(record[f"{prefix}/to_timestamp"])
+                if not np.isfinite([start, end]).all() or start < 0 or end <= start:
+                    raise ValueError(f"Invalid v3 video interval for episode {episode_index}")
+                video_timestamps = start + timestamps
+                if (video_timestamps >= end).any():
+                    raise ValueError(f"v3 episode {episode_index}: video interval is too short")
+                video_data[image_key] = get_frames_by_timestamps(
+                    str(self.dataset_path / video_filename),
+                    video_timestamps,
+                    decoder_kwargs=self.decoder_kwargs or {},
+                )
+                continue
 
             # Construct video file path using pattern
             video_filename = self.video_path_pattern.format(

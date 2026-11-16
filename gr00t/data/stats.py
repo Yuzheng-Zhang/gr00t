@@ -155,9 +155,10 @@ def calculate_dataset_statistics(
         sorted(list(parquet_paths)),
         desc="Collecting all parquet files...",
     ):
-        # Load the parquet file
-        parquet_data = pd.read_parquet(parquet_path)
-        parquet_data = parquet_data
+        # Read only requested features. Unused nested sensor columns can carry
+        # extension dtypes that fail during pandas concatenation (e.g. tactile
+        # Array2D columns registered by Hugging Face datasets).
+        parquet_data = pd.read_parquet(parquet_path, columns=features)
         all_low_dim_data_list.append(parquet_data)
     all_low_dim_data = pd.concat(all_low_dim_data_list, axis=0)
     # Compute dataset statistics
